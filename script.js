@@ -7,6 +7,209 @@ let lastRefresh = 0;
 let refreshInterval = 10 * 60 * 1000; // 10 minutes
 let pendingRemoveId = null;
 
+// Global watch mode state
+let isWatchMode = false;
+let watchedWalletAddress = null;
+let watchedWalletHash = null;
+
+// Function to enter watch mode
+async function enterWatchMode() {
+    const modal = document.getElementById('watchModal');
+    modal.classList.add('active');
+    document.getElementById('watchWalletInput').focus();
+}
+
+// Function to exit watch mode
+async function exitWatchMode() {
+    isWatchMode = false;
+    watchedWalletAddress = null;
+    watchedWalletHash = null;
+    
+    // Reset to user's wallet or demo
+    if (walletManager.isConnected) {
+        db.currentWallet = walletManager.walletHash;
+    } else {
+        db.currentWallet = 'demo_user';
+    }
+    
+    // Update UI
+    updateWatchModeUI();
+    
+    // Reload user's positions
+    positions = await db.getPositions();
+    updateDashboard();
+    updateDegenBag();
+    
+    showStatus('Exited watch mode', false);
+}
+
+// Function to start watching a wallet
+async function startWatching() {
+    const walletInput = document.getElementById('watchWalletInput');
+    const walletAddress = walletInput.value.trim();
+    
+    if (!walletAddress) {
+        showStatus('Please enter a wallet address', true);
+        return;
+    }
+    
+    // Validate Solana address format (basic check)
+    if (walletAddress.length < 32 || walletAddress.length > 44) {
+        showStatus('Invalid Solana wallet address format', true);
+        return;
+    }
+    
+    try {
+        showStatus('Loading wallet positions...', false);
+        
+        // Create wallet hash from the address
+        watchedWalletAddress = walletAddress;
+        watchedWalletHash = createWalletHashFromAddress(walletAddress);
+        
+        // Set database to use watched wallet
+        db.currentWallet = watchedWalletHash;
+        
+        // Load positions for watched wallet
+        positions = await db.getPositions();
+        
+        if (positions.length === 0) {
+            showStatus('No positions found for this wallet', false);
+        } else {
+            showStatus(`Watching ${positions.length} positions`, false);
+        }
+        
+        // Enter watch mode
+        isWatchMode = true;
+        
+        // Update UI
+        updateWatchModeUI();
+        updateDashboard();
+        updateDegenBag();
+        
+        // Close modal
+        closeWatchModal();
+        
+    } catch (error) {
+        console.error('Error entering watch mode:', error);
+        showStatus('Failed to load wallet positions', true);
+    }
+}
+
+// Helper function to create wallet hash (same as in wallet.js)
+function createWalletHashFromAddress(publicKey) {
+    let hash = 0;
+    for (let i = 0; i < publicKey.length; i++) {
+        const char = publicKey.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return `wallet_${Math.abs(hash).toString(36)}`;
+}
+
+// Function to update watch mode UI
+function updateWatchModeUI() {
+    const watchBtn = document.getElementById('watchModeBtn');
+    const exitWatchBtn = document.getElementById('exitWatchBtn');
+    const floatBtn = document.querySelector('.float-btn');
+    const pageTitle = document.querySelector('.page-title h1');
+    const walletInfo = document.getElementById('walletInfo');
+    
+    if (isWatchMode) {
+        // Show watch mode state
+        if (watchBtn) watchBtn.style.display = 'none';
+        if (exitWatchBtn) exitWatchBtn.style.display = 'block';
+        if (floatBtn) floatBtn.style.display = 'none'; // Hide add button
+        if (pageTitle) pageTitle.textContent = '👀 Watching Wallet';
+        
+        // Update wallet info to show watched address
+        if (walletInfo) {
+            walletInfo.innerHTML = `
+                <div class="watch-mode-indicator">
+                    <div class="watch-label">Watching:</div>
+                    <div class="watch-address">${watchedWalletAddress.slice(0, 6)}...${watchedWalletAddress.slice(-4)}</div>
+                </div>
+            `;
+            walletInfo.style.display = 'flex';
+        }
+        
+    } else {
+        // Show normal state
+        if (watchBtn) watchBtn.style.display = 'block';
+        if (exitWatchBtn) exitWatchBtn.style.display = 'none';
+        if (floatBtn) floatBtn.style.display = 'block'; // Show add button
+        if (pageTitle) pageTitle.textContent = '🎒 DegenBag';
+        
+        // Reset wallet info to normal state
+        if (walletManager) {
+            walletManager.updateWalletUI();
+        }
+    }
+}
+
+// Function to close watch modal
+function closeWatchModal() {
+    document.getElementById('watchModal').classList.remove('active');
+    document.getElementById('watchWalletInput').value = '';
+}
+
+// Add enter key support for watch modal
+document.addEventListener('DOMContentLoaded', function() {
+    // Add this to your existing DOMContentLoaded function
+    document.getElementById('watchWalletInput')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') startWatching();
+    });
+    
+    // Close watch modal when clicking outside
+    document.getElementById('watchModal')?.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeWatchModal();
+        }
+    });
+});
+
+// Update the showPage function to handle watch mode
+function showPage(pageId) {
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(page => {
+        page.classList.remove('active');
+    });
+    
+    // Show selected page
+    document.getElementById(pageId).classList.add('active');
+    
+    // Update nav buttons
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    event.target.classList.add('active');
+    
+    // Update watch mode UI when switching pages
+    if (pageId === 'degenbag') {
+        updateWatchModeUI();
+    }
+}
+
+// Override the addToDegenBag function to prevent adding in watch mode
+const originalAddToDegenBag = window.addToDegenBag;
+window.addToDegenBag = function() {
+    if (isWatchMode) {
+        showStatus('Cannot add positions in watch mode', true);
+        return;
+    }
+    return originalAddToDegenBag();
+};
+
+// Override the removePosition function to prevent removing in watch mode
+const originalRemovePosition = window.removePosition;
+window.removePosition = function(id) {
+    if (isWatchMode) {
+        showStatus('Cannot remove positions in watch mode', true);
+        return;
+    }
+    return originalRemovePosition(id);
+};
+
 // Initialize app
 // Updated initialization section for script.js
 // Replace your existing DOMContentLoaded function with this:
@@ -646,17 +849,28 @@ function updateIndexCards() {
     document.getElementById('deadCount').textContent = categories.dead;
 }
 
+// Update your updateDegenBag function to handle watch mode
 function updateDegenBag() {
     const container = document.getElementById('positionsContainer');
     
     if (positions.length === 0) {
+        const emptyMessage = isWatchMode 
+            ? '<h3>This wallet has no tracked positions</h3><p>This user hasn\'t added any positions to DegenVault yet 👀</p>'
+            : '<h3>Your DegenBag is empty</h3><p>Use the + button to add your first position! 🚀</p>';
+            
         container.innerHTML = `
             <div class="empty-state">
-                <h3>Your DegenBag is empty</h3>
-                <p>Use the + button to add your first position! 🚀</p>
+                ${emptyMessage}
             </div>
         `;
         return;
+    }
+    
+    // Add watch mode class to body for CSS targeting
+    if (isWatchMode) {
+        document.body.classList.add('watch-mode-active');
+    } else {
+        document.body.classList.remove('watch-mode-active');
     }
     
     const positionsHtml = positions.map(position => {
@@ -669,21 +883,26 @@ function updateDegenBag() {
         const currentValue = invested * (currentMcap / entryMcap);
         const pnlUSD = currentValue - invested;
         
+        // Show remove button only if not in watch mode
+        const removeButton = isWatchMode 
+            ? '<div class="watch-only-badge">👀 Read Only</div>'
+            : `<button class="remove-btn" onclick="removePosition('${position.id}')">Remove</button>`;
+        
         return `
-            <div class="position-card">
+            <div class="position-card ${isWatchMode ? 'watch-mode' : ''}">
                 <div class="position-header">
                     <div class="position-info-header">
                         ${position.token_logo_uri ? `<img src="${position.token_logo_uri}" alt="${position.token_symbol}" class="token-logo">` : '<div class="token-placeholder">🪙</div>'}
                         <div class="token-details">
                             <div class="position-name">${position.token_name || 'Unknown Token'}</div>
                             <div class="position-symbol">${position.token_symbol || 'N/A'}</div>
-                            <div class="token-address" onclick="copyAddress('${position.token_address}')" title="Click to copy address">
+                            <div class="token-address" onclick="${isWatchMode ? '' : `copyAddress('${position.token_address}')`}" ${isWatchMode ? '' : 'title="Click to copy address"'}>
                                 ${position.token_address.slice(0, 6)}...${position.token_address.slice(-4)}
-                                <span class="copy-icon">📋</span>
+                                ${isWatchMode ? '' : '<span class="copy-icon">📋</span>'}
                             </div>
                         </div>
                     </div>
-                    <button class="remove-btn" onclick="removePosition('${position.id}')">Remove</button>
+                    ${removeButton}
                 </div>
                 
                 <div class="position-info">
@@ -721,6 +940,39 @@ function updateDegenBag() {
     
     container.innerHTML = positionsHtml;
 }
+
+// Add this CSS for the watch-only badge
+const additionalWatchCSS = `
+.watch-only-badge {
+    background: rgba(139, 92, 246, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    color: #8b5cf6;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.position-card.watch-mode {
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.05);
+}
+
+.position-card.watch-mode .token-address {
+    cursor: default;
+    pointer-events: none;
+}
+
+.position-card.watch-mode .token-address:hover {
+    background: none;
+}
+`;
+
+// Add the CSS to the page
+const style = document.createElement('style');
+style.textContent = additionalWatchCSS;
+document.head.appendChild(style);
 
 // Copy address function
 function copyAddress(address) {
@@ -762,4 +1014,6 @@ async function testAddPosition() {
         console.error('Failed to add test position');
         showStatus('Failed to add test position', true);
     }
+    // Add this to your script.js - Watch Mode functionality
+
 }
