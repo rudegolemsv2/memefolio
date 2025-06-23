@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DegenVault - Memecoin Portfolio Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <!-- Navigation -->
+<!-- Updated Navigation section - replace your existing navbar -->
+<nav class="navbar">
+    <div class="nav-container">
+        <div class="brand">
+            <span class="logo">🚀</span>
+            <span class="brand-text">DegenVault</span>
+        </div>
+        
+        <div class="nav-center">
+            <div class="nav-buttons">
+                <button class="nav-btn active" onclick="showPage('dashboard')">Dashboard</button>
+                <button class="nav-btn" onclick="showPage('degenbag')">DegenBag</button>
+            </div>
+        </div>
+
+        <div class="nav-right">
+            <!-- Connect Wallet Button (shown when not connected) -->
+            <button id="connectWallet" class="wallet-btn" onclick="connectWallet()">
+                <span class="wallet-icon">👻</span>
+                Connect Phantom
+            </button>
+            
+            <!-- Wallet Info (shown when connected) -->
+            <div id="walletInfo" class="wallet-info" style="display: none;">
+                <div class="wallet-details">
+                    <span class="wallet-label">Connected:</span>
+                    <span id="walletAddress" class="wallet-address">Loading...</span>
+                </div>
+                <button id="disconnectWallet" class="disconnect-btn" onclick="disconnectWallet()" style="display: none;">
+                    Disconnect
+                </button>
+            </div>
+        </div>
+    </div>
+</nav>
+
+    <!-- Dashboard Page -->
+    <div id="dashboard" class="page active">
+        <div class="main-container">
+            <div class="dashboard-grid">
+                <!-- Left Side - Market Cap Index -->
+                <div class="index-panel">
+                    <h2>Market Cap Index</h2>
+                    <div class="index-list">
+                        <div class="index-item runners">
+                            <div class="item-header">
+                                <span class="emoji">🏃‍♂️</span>
+                                <span class="name">Runners</span>
+                            </div>
+                            <div class="range">$1M+</div>
+                            <div class="count" id="runnersCount">0</div>
+                        </div>
+
+                        <div class="index-item heating">
+                            <div class="item-header">
+                                <span class="emoji">🔥</span>
+                                <span class="name">Heating Up</span>
+                            </div>
+                            <div class="range">$100K-$1M</div>
+                            <div class="count" id="heatingCount">0</div>
+                        </div>
+
+                        <div class="index-item small">
+                            <div class="item-header">
+                                <span class="emoji">🌱</span>
+                                <span class="name">Small Caps</span>
+                            </div>
+                            <div class="range">$10K-$100K</div>
+                            <div class="count" id="smallCount">0</div>
+                        </div>
+
+                        <div class="index-item dead">
+                            <div class="item-header">
+                                <span class="emoji">⚰️</span>
+                                <span class="name">Dead</span>
+                            </div>
+                            <div class="range">Sub $10K</div>
+                            <div class="count" id="deadCount">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side - Portfolio & Chart -->
+                <div class="portfolio-panel">
+                    <!-- Portfolio Value Card -->
+                    <div class="value-card">
+                        <div class="value-title">Total Portfolio Value</div>
+                        <div class="value-amount" id="totalValue">$0.00</div>
+                        <div class="value-change" id="totalChange">+0.00%</div>
+                    </div>
+
+                    <!-- Chart Card -->
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>Portfolio Performance</h3>
+                            <div class="time-buttons">
+                                <button class="time-btn active" onclick="setChartPeriod('1D')">1D</button>
+                                <button class="time-btn" onclick="setChartPeriod('1W')">1W</button>
+                                <button class="time-btn" onclick="setChartPeriod('1M')">1M</button>
+                            </div>
+                        </div>
+                        <div class="chart-area">
+                            <canvas id="portfolioChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DegenBag Page -->
+    <div id="degenbag" class="page">
+        <div class="main-container">
+            <header class="page-title">
+                <h1>🎒 DegenBag</h1>
+                <p>Your tracked positions</p>
+                <button class="refresh-btn" onclick="refreshPositions()">🔄 Refresh Prices</button>
+            </header>
+
+            <div class="positions-container" id="positionsContainer">
+                <!-- Positions will be displayed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Add Button -->
+    <button class="float-btn" onclick="openAddModal()">+</button>
+
+    <!-- Add Modal -->
+    <div id="addModal" class="modal">
+        <div class="modal-box">
+            <div class="modal-top">
+                <h3>Add to DegenBag</h3>
+                <button class="close-x" onclick="closeAddModal()">&times;</button>
+            </div>
+            <div class="modal-form">
+                <div class="input-group">
+                    <label>Token Contract Address</label>
+                    <input type="text" id="tokenAddress" placeholder="Enter Solana token address...">
+                </div>
+                
+                <div class="input-group">
+                    <label>Market Cap at Purchase</label>
+                    <input type="text" id="marketCap" placeholder="$1,000,000">
+                    <div class="quick-buttons">
+                        <button type="button" class="quick-btn" onclick="setMarketCap(20000)">$20K</button>
+                        <button type="button" class="quick-btn" onclick="setMarketCap(50000)">$50K</button>
+                        <button type="button" class="quick-btn" onclick="setMarketCap(100000)">$100K</button>
+                        <button type="button" class="quick-btn" onclick="setMarketCap(200000)">$200K</button>
+                        <button type="button" class="quick-btn" onclick="setMarketCap(1000000)">$1M</button>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label>Amount Invested</label>
+                    <div class="amount-row">
+                        <input type="text" id="investedAmount" placeholder="$100 or 1 SOL">
+                        <div class="currency-switch">
+                            <button class="curr-btn active" data-currency="usdc" onclick="setCurrency('usdc')">USDC</button>
+                            <button class="curr-btn" data-currency="sol" onclick="setCurrency('sol')">SOL</button>
+                        </div>
+                    </div>
+                    <div class="quick-buttons">
+                        <button type="button" class="quick-btn" onclick="setInvestedAmount(20)">$20</button>
+                        <button type="button" class="quick-btn" onclick="setInvestedAmount(50)">$50</button>
+                        <button type="button" class="quick-btn" onclick="setInvestedAmount(100)">$100</button>
+                        <button type="button" class="quick-btn" onclick="setInvestedAmount(200)">$200</button>
+                        <button type="button" class="quick-btn" onclick="setInvestedAmount(1000)">$1K</button>
+                    </div>
+                </div>
+                
+                <button class="submit-btn" onclick="addToDegenBag()">
+                    🎒 Add Position
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-box">
+            <div class="modal-top">
+                <h3>⚠️ Remove Position</h3>
+            </div>
+            <div class="modal-form">
+                <p style="margin-bottom: 20px; line-height: 1.5; color: rgba(255,255,255,0.8);">
+                    Since our goal is to help you track your active positions, removing this token will also delete historic % data. Are you sure you want to continue?
+                </p>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="quick-btn" onclick="cancelRemove()" style="background: #666; color: white;">Cancel</button>
+                    <button class="submit-btn" onclick="confirmRemove()" style="background: #e74c3c;">Remove Position</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Message -->
+    <div id="status" class="status-msg"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="database.js"></script>
+    <script src="wallet.js"></script>
+    <script src="jupiter-api.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
